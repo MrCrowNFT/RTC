@@ -12,7 +12,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
-	_ "github.com/go-playground/validator/v10"
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 )
@@ -20,6 +19,7 @@ import (
 var db *pgx.Conn
 
 type RegistrationRequest struct{
+	Username	string `jason:"username" validate:"required, min=1"`
 	Email		string `json:"email" validate:"required,email"`
 	Password 	string `json:"password" validate:"required,min=8"`
 }
@@ -84,14 +84,14 @@ func registerHandler(w http.ResponseWriter, r *http.Request){
 	hashedPassword := hashPassword(req.Password)
 
 	// Save user in database
-	err := saveUser(req.Email, hashedPassword)
+	err := saveUser(req.Username, req.Email, hashedPassword)
 	if err != nil{
 		// Catch and inform the user if already user with said email, so we use costum error
 
 	} 
 
-
-
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("User regustered successfully"))
 }
 
 func hashPassword(password string)(hashedpassword string){
@@ -99,7 +99,14 @@ func hashPassword(password string)(hashedpassword string){
 	return string(hash)
 }
 
-func saveUser(email, hashedPassword string)(err error){
+func saveUser(username, email, hashedPassword string)(err error){
+	_, err = db.Exec(context.Background(),
+		`INSERT INTO accounts (username, email, password) VALUES (?, ?, ?)`,
+		username, email, hashedPassword)
+	if err != nil{
+		//Need to add an if statement for adding a custom error for when is dup username or email
+		return err
+	}
 
 	return nil
 }
