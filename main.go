@@ -95,10 +95,12 @@ func registerHandler(w http.ResponseWriter, r *http.Request){
 }
 
 func hashPassword(password string)(hashedpassword string){
-
+	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(hash)
 }
 
 func saveUser(email, hashedPassword string)(err error){
 
+	return nil
 }
 
