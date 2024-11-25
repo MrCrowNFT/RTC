@@ -9,23 +9,28 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"golang.org/x/crypto/bcrypt"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var db *pgx.Conn
 
 type RegistrationRequest struct{
-	Username	string `jason:"username" validate:"required, min=1"`
+	Username	string `json:"username" validate:"required, min=1"`
 	Email		string `json:"email" validate:"required,email"`
 	Password 	string `json:"password" validate:"required,min=8"`
 }
 
 var validate = validator.New()
-var ErrDuoEmail = errors.New("email already in use")
+var (
+	ErrDupEmail = errors.New("email already in use")
+	ErrDupUsername = errors.New("username already in use")
+)
 
 func main() {
 	// Load .env variables
@@ -49,7 +54,6 @@ func main() {
 	}
 
 	fmt.Println("Connected to the database")
-
 	defer db.Close(context.Background())
 
 	// Set up the router
@@ -58,9 +62,8 @@ func main() {
 
 
 	fmt.Println("Server running on http://localhost:5500")
-	go func() {
-		log.Fatal(http.ListenAndServe(":5500", nil))
-	}()
+	// Assign router to server
+	log.Fatal(http.ListenAndServe(":5500", r))
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request){
@@ -75,8 +78,8 @@ func registerHandler(w http.ResponseWriter, r *http.Request){
 
 	// Validate input 
 	if err := validate.Struct(req); err != nil{
-		http.Error(w, "Unable to validate input", http.StatusBadRequest)
-		log.Println("Unable to validate input")
+		http.Error(w, "Invalid input: "+ formatValidationErrors(err), http.StatusBadRequest)
+		log.Println("Validation failed: ", err)
 		return
 	}
 
@@ -87,7 +90,13 @@ func registerHandler(w http.ResponseWriter, r *http.Request){
 	err := saveUser(req.Username, req.Email, hashedPassword)
 	if err != nil{
 		// Catch and inform the user if already user with said email, so we use costum error
-
+		if errors.Is(err, ErrDupEmail) || errors.Is(err, ErrDupUsername){
+			http.Error(w, err.Error(), http.StatusConflict)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			log.Println("Error saving user:", err)
+		}
+		return
 	} 
 
 	w.WriteHeader(http.StatusCreated)
@@ -101,13 +110,35 @@ func hashPassword(password string)(hashedpassword string){
 
 func saveUser(username, email, hashedPassword string)(err error){
 	_, err = db.Exec(context.Background(),
-		`INSERT INTO accounts (username, email, password) VALUES (?, ?, ?)`,
+		`INSERT INTO accounts (username, email, password) VALUES ($1, $2, $3)`,
 		username, email, hashedPassword)
+
 	if err != nil{
-		//Need to add an if statement for adding a custom error for when is dup username or email
+		// Check posgress unique constraint violation to catch dups
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr){
+			// 23505 is code for unique violation
+			if pgErr.Code == "23505"{
+				// we check the content of the error to determine which element is dup
+				if strings.Contains(pgErr.Detail, "email"){
+					return ErrDupEmail
+				}
+				if strings.Contains(pgErr.Detail, "username"){
+					return ErrDupUsername
+				}
+			}
+		}
 		return err
 	}
 
 	return nil
+}
+
+func formatValidationErrors(err error)(string){
+	var sb strings.Builder
+	for _, err :=  range err.(validator.ValidationErrors){
+		sb.WriteString(fmt.Sprintf("Field '%s' failed validatin: %s.", err.Field(), err.Tag()))
+	}
+	return sb.String()
 }
 
