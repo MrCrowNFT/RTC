@@ -10,20 +10,20 @@ import (
 
 func main() {
 	// Load config
-	config.initConfig()
+	config.InitConfig()
 
 	// Database connection
-	db := config.initDB()
-	defer db.Close()
+	db := config.InitDB()
+	defer config.CloseDB()
 
 	// Set up the router
 	r := chi.NewRouter()
-	r.Post("/register", handlers.registerHandler(db))
+	r.Post("/register", handlers.RegisterHandler(db))
 
 
 	log.Println("Server running on http://localhost:5500")
 	// Assign router to server
 	log.Fatal(http.ListenAndServe(":5500", r))
 }
-}
+
 

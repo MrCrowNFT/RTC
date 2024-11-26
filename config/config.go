@@ -11,7 +11,7 @@ import(
 
 var db *pgx.Conn
 
-func initConfig(){
+func InitConfig(){
 	// Load .env variables
 	err := godotenv.Load()
 	if err != nil {
@@ -20,7 +20,7 @@ func initConfig(){
 	fmt.Println(".env variables loaded successfully.")
 }
 
-func initDB()(*pgx.Conn){
+func InitDB()(*pgx.Conn){
 	// Constructing the connection string
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", 
 		os.Getenv("DB_USER"), 

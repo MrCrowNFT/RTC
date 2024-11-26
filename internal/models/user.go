@@ -3,9 +3,13 @@ package models
 import (
 	"context"
 	"errors"
-	"RTC/pkg/hashing"
+	"RTC/internal/utils"
+	"log"
+	"strings"
+
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgconn"
 )
 
 type RegistrationRequest struct{
@@ -19,12 +23,17 @@ var (
 	ErrDupUsername = errors.New("username already in use")
 )
 
-func saveUser(db *pgx.Conn, req RegistrationRequest)(err error){
-	hashedPassword := hashing.HashPassword(req.Password)
+func SaveUser(db *pgx.Conn, req RegistrationRequest)(err error){
+	// Hash the user password to save it into the database
+	hashedPassword, err := utils.HashPassword(req.Password)
+	if err != nil{
+		log.Printf("Error hashing password: %v", err)
+		return
+	}
 	
 	_, err = db.Exec(context.Background(),
 		`INSERT INTO accounts (username, email, password) VALUES ($1, $2, $3)`,
-		username, email, hashedPassword)
+		req.Username, req.Email, hashedPassword)
 
 	if err != nil{
 		// Check posgress unique constraint violation to catch dups
